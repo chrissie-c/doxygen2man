@@ -1,3 +1,6 @@
+/// TODO
+//qb_log_callsites_register - extra indent at start of description
+
 extern crate xml;
 extern crate chrono;
 
@@ -326,7 +329,6 @@ fn collect_text_and_refid(parser: &mut EventReader<BufReader<File>>) -> Result<(
                 }
             }
             Err(e) => {
-                println!("Error:{}", e);
                 return Err(e);
             }
         }
@@ -369,7 +371,6 @@ fn collect_retval(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedNa
                 }
             }
             Err(e) => {
-                println!("Error:{}", e);
                 return Err(e);
             }
         }
@@ -472,7 +473,6 @@ fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>, elem_name: &Ow
                 }
             }
             Err(e) => {
-                println!("Error:{}", e);
                 return Err(e);
             }
         }
@@ -565,7 +565,7 @@ fn collect_function_param(parser: &mut EventReader<BufReader<File>>,
 
 fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                          functions: &mut Vec<FunctionInfo>,
-                         structures: &mut HashMap<String, StructureInfo>) -> Result<bool, xml::reader::Error>
+                         structures: &mut HashMap<String, StructureInfo>) -> Result<(), xml::reader::Error>
 {
     let mut function = FunctionInfo::new();
 
@@ -628,7 +628,7 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                         function.fn_refids.dedup();
 
                         functions.push(function);
-                        return Ok(true);
+                        return Ok(());
                         }
                     }
                     _ => {}
@@ -692,7 +692,7 @@ fn collect_define(parser: &mut EventReader<BufReader<File>>) -> Result<HashDefin
 fn read_file(parser: &mut EventReader<BufReader<File>>,
              opt: &mut Opt,
              functions: &mut Vec<FunctionInfo>,
-             structures: &mut HashMap<String, StructureInfo>) -> Result<bool, xml::reader::Error>
+             structures: &mut HashMap<String, StructureInfo>) -> Result<(), xml::reader::Error>
 {
     let mut defines = Vec::<HashDefine>::new();
     let mut general = FunctionInfo::new();
@@ -761,7 +761,7 @@ fn read_file(parser: &mut EventReader<BufReader<File>>,
                         general.fn_name = opt.headerfile.clone();
                         general.fn_defines = defines;
                         functions.push(general);
-                        return Ok(true);
+                        return Ok(());
                     }
                     _ => {}
                 }
@@ -820,7 +820,6 @@ fn read_structure_member(parser: &mut EventReader<BufReader<File>>) -> Result<Fn
                 }
             }
             Err(e) => {
-                println!("Error:{}", e);
                 return Err(e);
             }
         }
@@ -972,7 +971,6 @@ fn read_structure_file(parser: &mut EventReader<BufReader<File>>,
                 }
             }
             Err(e) => {
-                println!("Error:{}", e);
                 return Err(e);
             }
         }
@@ -1099,7 +1097,7 @@ fn print_text_function(f: &FunctionInfo,
 }
 
 // Format a long description string
-fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<bool, std::io::Error>
+fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<(), std::io::Error>
 {
     let mut in_nf = false;
 
@@ -1121,7 +1119,7 @@ fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<bool, std::i
             in_nf = false;
         }
     }
-    Ok(true)
+    Ok(())
 }
 
 // Just for testing really
@@ -1137,7 +1135,7 @@ fn print_ascii_pages(_opt: &Opt,
 
 // Prints a structure member or a function param given
 // a field width. Also reformats pointers to look nicer (IMHO)
-fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: bool, delimeter: String) -> Result<bool, std::io::Error>
+fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: bool, delimeter: String) -> Result<(), std::io::Error>
 {
     let mut asterisks = "  ".to_string();
     let mut formatted_type = pi.par_type.clone();
@@ -1170,11 +1168,11 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
                  formatted_type, asterisks,
                  pi.par_name, delimeter, width=field_width)?;
     }
-    Ok(true)
+    Ok(())
 }
 
 // Print a structure or enum
-fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<bool, std::io::Error>
+fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), std::io::Error>
 {
     if si.str_brief != "" {
         writeln!(f, "{}", si.str_brief)?;
@@ -1213,7 +1211,7 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<bool, 
     writeln!(f, ".PP")?;
     writeln!(f, ".fi")?;
 
-    Ok(false)
+    Ok(())
 }
 
 // Print a single man page
@@ -1222,15 +1220,21 @@ fn print_man_page(opt: &Opt,
                   function: &FunctionInfo,
                   functions: &Vec<FunctionInfo>,
                   structures: &HashMap<String, StructureInfo>,
-                  copyright: &String) -> Result<bool, std::io::Error>
+                  copyright: &String) -> Result<(), std::io::Error>
 {
     if function.fn_name == opt.headerfile && !opt.print_general {
-        return Ok(false);
+        return Ok(());
     }
 
     // DO IT!
     let mut man_file = String::new();
-    write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section).unwrap();//TODO FIX UNWRAP
+    match write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("Error making manpage filename: {:?}", e);
+            return Err(Error::new(ErrorKind::Other, "Error making filename"));
+        }
+    }
 
     let dateptr = man_date;
 
@@ -1241,6 +1245,7 @@ fn print_man_page(opt: &Opt,
         }
         Ok(fl) => {
             let mut f = BufWriter::new(fl);
+
             // Work out the length of the parameters, so we can line them up
             let mut max_param_type_len: usize = 0;
             let mut max_param_name_len: usize = 0;
@@ -1388,14 +1393,14 @@ fn print_man_page(opt: &Opt,
             //END OF PRINTING
         }
     }
-    return Ok(true);
+    return Ok(());
 }
 
 
 // Print all man pages
 fn print_man_pages(opt: &Opt,
                    functions: &Vec<FunctionInfo>,
-                   structures: &HashMap<String, StructureInfo>)
+                   structures: &HashMap<String, StructureInfo>) -> Result<(), std::fmt::Error>
 {
     let mut date_to_print = String::new();
     let mut header_copyright = String::new();
@@ -1407,13 +1412,7 @@ fn print_man_pages(opt: &Opt,
     if opt.manpage_date != "" {
         date_to_print = opt.manpage_date.clone();
     } else {
-        match write!(date_to_print, "{}-{}-{}", today.year(), today.month(), today.day()) {
-            Ok(_) => {},
-            Err(e)=> {
-                println!("Error forming date string: {:?}", e);
-                return;
-            }
-        }
+        write!(date_to_print, "{}-{}-{}", today.year(), today.month(), today.day())?;
     }
 
     if manpage_year == 0 {
@@ -1423,16 +1422,17 @@ fn print_man_pages(opt: &Opt,
     if opt.use_header_copyright {
         match read_header_copyright(&opt) {
             Ok(s) => header_copyright = s,
-            Err(_e) => {}
+            Err(_e) => {} // Use the one in Opt
         }
     } else {
         write!(header_copyright, "Copyright (C) {}-{} {}, All rights reserved",
-               opt.start_year, manpage_year, opt.company).unwrap();
+               opt.start_year, manpage_year, opt.company)?;
     }
 
     for f in functions {
-        print_man_page(&opt, &date_to_print, &f, &functions, &structures, &header_copyright).unwrap(); //TODO AUDIT unwrap;
+        print_man_page(&opt, &date_to_print, &f, &functions, &structures, &header_copyright).unwrap();
     }
+    Ok(())
 }
 
 
@@ -1446,7 +1446,7 @@ fn main() {
         match write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
             Ok(_f) => {}
             Err(e) => {
-                println!("Error making main XML file name for {}: {}", in_file, e);
+                eprintln!("Error making main XML file name for {}: {}", in_file, e);
                 return;
             }
         }
@@ -1480,7 +1480,13 @@ fn main() {
                     print_ascii_pages(&opt, &functions, &filled_structures);
                 }
                 if opt.print_man {
-                    print_man_pages(&opt, &functions, &filled_structures);
+                    match print_man_pages(&opt, &functions, &filled_structures) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Error in print_man_pages: {:?}", e);
+                            break;
+                        }
+                    }
                 }
             }
             Err(e) => {
