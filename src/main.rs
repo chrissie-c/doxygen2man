@@ -1,5 +1,11 @@
-/// TODO
-//qb_log_callsites_register - extra indent at start of description
+// doxygen2man
+//
+// Copyright (C) 2020 Red Hat, Inc.  All rights reserved.
+//
+// Author: Christine Caulfield <ccaulfie@redhat.com>
+//
+// This software licensed under GPL-2.0+
+//
 
 extern crate xml;
 extern crate chrono;
@@ -12,15 +18,6 @@ use structopt::StructOpt;
 use xml::reader::{EventReader, XmlEvent, ParserConfig};
 use xml::name::OwnedName;
 use chrono::prelude::*;
-
-// macro_rules! debugln {
-//      ($($arg:expr),*) => {
-//         match cfg!(debug_assertions) {
-//             true => eprintln!($( $arg, )* ),
-//             false => {},
-//         }
-//     }
-// }
 
 // This defines how long a parameter type can get before we
 // decide it's not worth lining everything up.
@@ -274,9 +271,7 @@ fn parse_standard_elements(parser: &mut EventReader<BufReader<File>>, name: &Own
             text += collect_text(parser, name)?.as_str();
         }
         "parametername" => {
-            text += "\\fB";
             text += collect_text(parser, name)?.as_str();
-            text += "\\fP";
         }
         "note" => {
             text += collect_text(parser, name)?.as_str();
@@ -349,10 +344,10 @@ fn collect_retval(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedNa
                     XmlEvent::StartElement {name, ..} => {
                         match name.to_string().as_str() {
                             "parameternamelist" => {
-                                ret_name = collect_text(parser, name)?;
+                                ret_name = collect_text(parser, name)?.trim().to_string();
                             }
                             "parameterdescription" => {
-                                ret_desc = collect_text(parser, name)?;
+                                ret_desc = collect_text(parser, name)?.trim().to_string();
                             }
                             _ => {
                                 let _text = collect_text(parser, name)?;
@@ -382,7 +377,7 @@ fn collect_retvals(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedN
 {
     let mut rvs = Vec::<ReturnVal>::new();
 
-        loop {
+    loop {
         let er = parser.next();
         match er {
             Ok(e) => {
@@ -415,10 +410,96 @@ fn collect_retvals(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedN
     }
 }
 
+
+fn collect_parameter_item(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedName) -> Result<(String, String), xml::reader::Error>
+{
+    let mut par_name = String::new();
+    let mut par_desc = String::new();
+
+    loop {
+        let er = parser.next();
+        match er {
+            Ok(e) => {
+                match &e {
+                    XmlEvent::StartElement {name, ..} => {
+                        match name.to_string().as_str() {
+                            "parameternamelist" => {
+                                par_name = collect_text(parser, name)?.trim().to_string();
+                            }
+                            "parameterdescription" => {
+                                par_desc = collect_text(parser, name)?.trim().to_string();
+                            }
+                            _ => {
+                                let _text = collect_text(parser, name)?;
+                            }
+                        }
+                    }
+                    XmlEvent::Characters(s) => {
+                        let _text = s;
+                    }
+                    XmlEvent::EndElement {name, ..} => {
+                        if name == elem_name {
+                            return Ok((par_name, par_desc));
+                        };
+                    }
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+}
+
+fn collect_params(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedName,
+                  params: &mut Vec<FnParam>) -> Result<(), xml::reader::Error>
+{
+    loop {
+        let er = parser.next();
+        match er {
+            Ok(e) => {
+                match &e {
+                    XmlEvent::StartElement {name, ..} => {
+                        match name.to_string().as_str() {
+                            "parameteritem" => {
+                                let (name, desc) = collect_parameter_item(parser, name)?;
+                                // Add the desc to this param
+                                for mut p in &mut *params {
+                                    if p.par_name == name {
+                                        p.par_desc = desc.clone();
+                                    }
+                                }
+                            }
+                            _ => {
+                                let _text = collect_text(parser, name)?;
+                            }
+                        }
+                    }
+                    XmlEvent::Characters(s) => {
+                        let _text = s;
+                    }
+                    XmlEvent::EndElement {name, ..} => {
+                        if name == elem_name {
+                            return Ok(())
+                        };
+                    }
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+
+}
 // Called from "detaileddescription", so only needs to process tags that are immediately below it
 // (everything below that is handled by collect_text()),
 // and returns the main text, return text, and notes
-fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedName) -> Result<(String, String, String, Vec<ReturnVal>), xml::reader::Error>
+fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>,
+                       elem_name: &OwnedName,
+                       function: &mut FunctionInfo) -> Result<(), xml::reader::Error>
 {
     let mut text = String::new();
     let mut returns = String::new();
@@ -433,15 +514,14 @@ fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>, elem_name: &Ow
                     XmlEvent::StartElement {name, ..} => {
                         match name.to_string().as_str() {
                             "para" => {
-                                let (tmp, rets, note, rvs) = collect_detail_bits(parser, &name)?;
-                                text += tmp.as_str();
-                                returns += rets.as_str();
-                                notes += note.as_str();
-                                retvals = rvs;
+                                collect_detail_bits(parser, &name, function)?;
+                                function.fn_detail += "\n";
                             }
                             "parameterlist" => {
                                 if get_attr(&e, "kind") == "retval" {
                                     retvals = collect_retvals(parser, name)?;
+                                } else if get_attr(&e, "kind") == "param" {
+                                    collect_params(parser, name, &mut function.fn_args)?;
                                 } else {
                                     text += collect_text(parser, name)?.as_str();
                                 }
@@ -466,7 +546,11 @@ fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>, elem_name: &Ow
                     XmlEvent::EndElement {name, ..} => {
                         // Only return if we are at the end of the element that called us
                         if name == elem_name {
-                            return Ok((text.trim_end().to_string(), returns, notes, retvals));
+                            function.fn_detail += text.trim_end().to_string().as_str();
+                            function.fn_returnval += returns.as_str();
+                            function.fn_note += notes.as_str();
+                            function.fn_retvals.append(&mut retvals);
+                            return Ok(());
                         }
                     }
                     _ => {}
@@ -602,13 +686,7 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                                 function.fn_brief = collect_text(parser, name)?;
                             }
                             "detaileddescription" => {
-                                // Can't assign direct to multiple struct elements
-                                // https://github.com/rust-lang/rfcs/issues/372
-                                let (detail, returnval, note, rvs) = collect_detail_bits(parser, &name)?;
-                                function.fn_detail = detail;
-                                function.fn_returnval = returnval;
-                                function.fn_note = note;
-                                function.fn_retvals = rvs;
+                                collect_detail_bits(parser, &name, &mut function)?;
                             }
                             _ => {
                                 // Not used,. but still need to consume it
@@ -621,14 +699,14 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                     }
                     XmlEvent::EndElement {name, ..} => {
                         if name.to_string().as_str() == "memberdef" {
-                        // Remove all duplicate refids for functions
-                        // where a structure appears as multiple arguments
-                        // (not common, but no need to print it twice)
-                        function.fn_refids.sort_unstable();
-                        function.fn_refids.dedup();
+                            // Remove all duplicate refids for functions
+                            // where a structure appears as multiple arguments
+                            // (not common, but no need to print it twice)
+                            function.fn_refids.sort_unstable();
+                            function.fn_refids.dedup();
 
-                        functions.push(function);
-                        return Ok(());
+                            functions.push(function);
+                            return Ok(());
                         }
                     }
                     _ => {}
@@ -743,10 +821,7 @@ fn read_file(parser: &mut EventReader<BufReader<File>>,
                                 general.fn_brief += collect_text(parser, name)?.as_str();
                             }
                             "detaileddescription" => {
-                                let (detail, returnval, note, _rvs) = collect_detail_bits(parser, &name)?;
-                                general.fn_detail = detail;
-                                general.fn_returnval = returnval;
-                                general.fn_note = note;
+                                collect_detail_bits(parser, &name, &mut general)?;
                             }
                             _ => {
                                 let _tother = parse_standard_elements(parser, name, &e)?;
@@ -811,7 +886,8 @@ fn read_structure_member(parser: &mut EventReader<BufReader<File>>) -> Result<Fn
                         }
                     }
                     XmlEvent::EndElement {..} => {
-                        par_name += par_args.as_str(); // Adds array lengths
+                        // += not working here
+                        par_name = par_name + "\\fB" + par_args.as_str() + "\\fR"; // Adds array lengths
                         return Ok(FnParam {par_name, par_type, par_desc, par_brief, par_refid: None});
                     },
                     XmlEvent::Characters(_s) => {
@@ -1153,10 +1229,10 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
             formatted_type = pi.par_type.get(..typelen-2).unwrap().to_string();
         } else
         // Tidy function pointers
-        if typelen > 1 && formatted_type.get(typelen-2..typelen-1).unwrap() == "(" {
-            asterisks = "(*".to_string();
-            formatted_type = pi.par_type.get(..typelen-2).unwrap().to_string();
-        }
+            if typelen > 1 && formatted_type.get(typelen-2..typelen-1).unwrap() == "(" {
+                asterisks = "(*".to_string();
+                formatted_type = pi.par_type.get(..typelen-2).unwrap().to_string();
+            }
     }
 
     if bold {
@@ -1270,14 +1346,16 @@ fn print_man_page(opt: &Opt,
             writeln!(f, ".TH {} {} {} \"{}\" \"{}\"",
                      function.fn_name.to_ascii_uppercase(), opt.man_section, dateptr, opt.package_name, opt.header)?;
 
-	    writeln!(f, ".SH NAME")?;
-            if function.fn_brief !=""  {
+            writeln!(f, ".SH NAME")?;
+            writeln!(f, ".PP")?;
+            if function.fn_brief != ""  {
                 writeln!(f, "{} \\- {}", function.fn_name, function.fn_brief)?;
             } else {
                 writeln!(f, "{}", function.fn_name)?;
             }
 
-	    writeln!(f, ".SH SYNOPSIS")?;
+            writeln!(f, ".SH SYNOPSIS")?;
+            writeln!(f, ".PP")?;
 	    writeln!(f, ".nf")?;
 	    writeln!(f, ".B #include <{}{}>", opt.header_prefix, opt.headerfile)?;
             if function.fn_def != "" {
@@ -1289,7 +1367,7 @@ fn print_man_page(opt: &Opt,
                     i = i+1;
                     if i == param_count {
                         print_param(&mut f, &p, max_param_type_len, true, "".to_string())?;
-                        } else {
+                    } else {
                         print_param(&mut f, &p, max_param_type_len, true, ",".to_string())?;
                     }
                 }
@@ -1299,15 +1377,17 @@ fn print_man_page(opt: &Opt,
             }
 
             if opt.print_params && num_param_descs > 0 {
-	        writeln!(f, ".SH PARAMS")?;
+	        writeln!(f, ".SH PARAMETERS")?;
+                writeln!(f, ".PP")?;
                 for p in &function.fn_args {
-                    writeln!(f, "\\fB{:<width$} \\fP\\fI{}\\fP",
-                             p.par_name, p.par_desc, width=max_param_name_len)?;
-                    writeln!(f, ".PP")?;
+                    writeln!(f, ".TP")?;
+                    writeln!(f, "\\fB{}\\fP {}",
+                             p.par_name, p.par_desc)?;
                 }
             }
             if function.fn_detail != "" {
 	        writeln!(f, ".SH DESCRIPTION")?;
+                writeln!(f, ".PP")?;
                 print_long_string(&mut f, &function.fn_detail)?;
             }
 
@@ -1319,6 +1399,7 @@ fn print_man_page(opt: &Opt,
                         Some(s) => {
                             if first {
                                 writeln!(f, ".SH STRUCTURES")?;
+                                writeln!(f, ".PP")?;
                                 first = false;
                             }
                             print_structure(&mut f, &s)?;
@@ -1328,12 +1409,13 @@ fn print_man_page(opt: &Opt,
                 }
             }
             if function.fn_returnval != "" {
-	        writeln!(f, ".SH RETURN VALUES")?;
+	        writeln!(f, ".SH RETURN VALUE")?;
+                writeln!(f, ".PP")?;
                 writeln!(f, "{}", function.fn_returnval)?;
                 writeln!(f, ".br")?;
                 for rv in &function.fn_retvals {
-                    writeln!(f, "{} {}", rv.ret_name, rv.ret_desc)?;
-                    writeln!(f, ".br")?;
+                    writeln!(f, ".TP")?;
+                    writeln!(f, "\\fB{}\\fR {}", rv.ret_name, rv.ret_desc)?;
                 }
                 writeln!(f, ".PP")?;
             }
@@ -1341,6 +1423,7 @@ fn print_man_page(opt: &Opt,
             // #defines - only exists on the General manpage
             if function.fn_defines.len() > 0 {
                 writeln!(f, ".SH DEFINES")?;
+                writeln!(f, ".PP")?;
                 for d in &function.fn_defines {
                     // Only print ALLCAPS defines, for neatness
                     if d.hd_name == d.hd_name.to_ascii_uppercase() {
@@ -1363,6 +1446,7 @@ fn print_man_page(opt: &Opt,
 
             if function.fn_note != "" {
 	        writeln!(f, ".SH NOTE")?;
+                writeln!(f, ".PP")?;
                 print_long_string(&mut f, &function.fn_note)?;
             }
 
@@ -1381,12 +1465,13 @@ fn print_man_page(opt: &Opt,
                         } else {
                             ", "
                         };
-	            writeln!(f, "\\fI{}\\fR({}){}", func.fn_name, opt.man_section, delim)?;
+	            writeln!(f, "\\fI{}\\fP({}){}", func.fn_name, opt.man_section, delim)?;
                 };
             }
 
             if copyright != "" {
                 writeln!(f, ".SH COPYRIGHT")?;
+                writeln!(f, ".PP")?;
                 writeln!(f,"{}", copyright)?;
             }
 
@@ -1440,9 +1525,9 @@ fn main() {
 
     // Get command-line options
     let mut opt = Opt::from_args();
-    let mut main_xml_file = String::new();
 
     for in_file in &opt.xml_files.clone() {
+        let mut main_xml_file = String::new();
         match write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
             Ok(_f) => {}
             Err(e) => {
