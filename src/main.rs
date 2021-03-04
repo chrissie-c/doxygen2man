@@ -27,15 +27,16 @@ use chrono::prelude::*;
 const MAX_PRINT_PARAM_LEN: usize = 80;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "doxygen2man2", about = "Convert doxygen files to man pages")]
+#[structopt(name = "doxygen2man", about = "Convert doxygen files to man pages")]
 /// This is a tool to generate API manpages from a doxygen-annotated header file.
 /// First run doxygen on the file and then run this program against the main XML file
 /// it created and the directory containing the ancilliary files. It will then
 /// output a lot of *.3 man page files which you can then ship with your library.
 ///
-/// You will need to invoke this program once for each .h file in your library,
-/// using the name of the generated .xml file. This file will usually be called
-/// something like <include-file>_8h.xml, eg qbipcs_8h.xml
+/// Doxygen creates an .xml file for each .h file in your project, pass these .xml
+/// files into this program - they are usually called something like
+/// <include-file>_8h.xml, eg qbipcs_8h.xml, you can pass multiple XML files to
+/// doxygen2man on the command-line.
 ///
 /// If you want HTML output then simpy use nroff on the generated files as you
 /// would do with any other man page.
@@ -96,7 +97,7 @@ struct Opt {
     company: String,
 
     // Positional parameters
-    #[structopt (help="XML files to process")]
+    #[structopt (help="XML files to process", required = true)]
     xml_files: Vec<String>,
 }
 
