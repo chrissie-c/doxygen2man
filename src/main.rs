@@ -1,6 +1,6 @@
 // doxygen2man
 //
-// Copyright (C) 2020 Red Hat, Inc.  All rights reserved.
+// Copyright (C) 2020-2021 Red Hat, Inc.  All rights reserved.
 //
 // Author: Christine Caulfield <ccaulfie@redhat.com>
 //
@@ -122,9 +122,9 @@ struct ReturnVal
 #[derive(Clone)]
 enum StructureType
 {
-    StrUnknown,
-    StrEnum,
-    StrStruct,
+    Unknown,
+    Enum,
+    Struct,
 }
 #[derive(Clone)]
 struct StructureInfo
@@ -139,7 +139,7 @@ struct StructureInfo
 impl StructureInfo {
     pub fn new() -> StructureInfo {
         StructureInfo {
-            str_type: StructureType::StrUnknown,
+            str_type: StructureType::Unknown,
             str_name: String::new(),
             str_brief: String::new(),
             str_description: String::new(),
@@ -198,17 +198,14 @@ impl FunctionInfo {
 // Does what it says on the tin
 fn get_attr(e: &XmlEvent, attrname: &str) -> String
 {
-    match e {
-        XmlEvent::StartElement {attributes,.. } => {
-            for a in attributes {
-                if a.name.to_string() == attrname {
-                    return a.value.to_string();
-                }
+    if let XmlEvent::StartElement {attributes,.. } = e {
+        for a in attributes {
+            if a.name.to_string() == attrname {
+                return a.value.to_string();
             }
         }
-        _ => {}
     }
-    return String::new();
+    String::new()
 }
 
 
@@ -612,17 +609,11 @@ fn collect_function_param(parser: &mut EventReader<BufReader<File>>,
                 match &e {
                     XmlEvent::StartElement {name, ..} => {
                         let (tmp, refid) = collect_text_and_refid(parser)?;
-                        match &refid {
-                            Some(r) => {
-                                match structures.get(r) {
-                                    Some(_) => {} // It's already in here
-                                    None => {
-                                        let new_struct = StructureInfo {str_type: StructureType::StrStruct, str_name: tmp.clone(), str_brief: String::new(), str_description: String::new(), str_members: Vec::<FnParam>::new()};
-                                        structures.insert(r.clone(), new_struct);
-                                    }
-                                }
-                            },
-                            None => {}
+                        if let Some(r) = &refid {
+                            if structures.get(r).is_none() {
+                                let new_struct = StructureInfo {str_type: StructureType::Struct, str_name: tmp.clone(), str_brief: String::new(), str_description: String::new(), str_members: Vec::<FnParam>::new()};
+                                structures.insert(r.clone(), new_struct);
+                            }
                         }
 
                         if name.to_string() == "type" {
@@ -677,9 +668,8 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                                 let param = collect_function_param(parser, structures)?;
                                 // If the param has a refid then make a note of it so we
                                 // can expand structures in the manpage
-                                match &param.par_refid {
-                                    Some(r) => function.fn_refids.push(r.clone()),
-                                    None => {}
+                                if let Some(r) = &param.par_refid {
+                                    function.fn_refids.push(r.clone());
                                 }
                                 function.fn_args.push(param);
                             }
@@ -800,21 +790,20 @@ fn read_file(parser: &mut EventReader<BufReader<File>>,
                                 // enums are in the main file, structs have their own
                                 if get_attr(&e, "kind") == "enum" {
                                     let refid = get_attr(&e, "id");
-                                    match collect_enum(parser, StructureType::StrEnum) {
-                                        Ok(si) => {
-                                            structures.insert(refid, si);
-                                        },
-                                        Err(_) => {}
+                                    if let Ok(si) = collect_enum(parser, StructureType::Enum) {
+                                        structures.insert(refid, si);
                                     }
-                                }
+				}
                                 // Ignore typedefs for the moment
                                 if get_attr(&e, "kind") == "typedef" {
                                     let _ignore = collect_text(parser, name)?;
                                 }
                             }
                             "compoundname" => {
-                                // This is the header filename
-                                opt.headerfile = collect_text(parser, name)?;
+                                // This is the header filename (and the reason &opt is mutable & cloned)
+				if opt.headerfile == "unknown.h" {
+                                    opt.headerfile = collect_text(parser, name)?;
+				}
                             }
 
                             // These are at the file (eg qblog.h) level
@@ -1022,12 +1011,9 @@ fn read_structure_file(parser: &mut EventReader<BufReader<File>>,
                     XmlEvent::StartElement {name, ..} => {
                         match name.to_string().as_str() {
                             "compounddef" => {
-                                match read_structure(parser, StructureType::StrStruct) {
-                                    Ok(s) => {
-                                        sinfo = s;
-                                        refid = get_attr(&e, "id");
-                                    }
-                                    Err(_e) => {}
+                                if let Ok(s) = read_structure(parser, StructureType::Struct) {
+                                    sinfo = s;
+                                    refid = get_attr(&e, "id");
                                 }
                             }
                             "briefdescription" => {
@@ -1062,39 +1048,28 @@ fn read_structures_files(opt: &Opt,
 {
     for (refid, s) in structures {
         match s.str_type {
-            StructureType::StrEnum => {
+            StructureType::Enum => {
                 filled_structures.insert(refid.to_string(), (*s).clone());
             }
-            StructureType::StrUnknown => {} // Throw it away
-            StructureType::StrStruct => {
+            StructureType::Unknown => {} // Throw it away
+            StructureType::Struct => {
                 let mut xml_file = String::new();
-                match write!(xml_file, "{}/{}.xml", &opt.xml_dir, &refid) {
-                    Ok(_f) => {}
-                    Err(e) => {
-                        println!("Error making structure XML file name for {}: {}", refid, e);
-                        return;
-                    }
+                if let Err(e) = write!(xml_file, "{}/{}.xml", &opt.xml_dir, &refid) {
+                    println!("Error making structure XML file name for {}: {}", refid, e);
+                    return;
                 }
 
-                match File::open(&xml_file) {
-                    Ok(f) => {
-
+                if let Ok(f) = File::open(&xml_file) {
                         let mut parser = ParserConfig::new()
                             .whitespace_to_characters(true)
                             .ignore_comments(true)
                             .create_reader(BufReader::new(f));
 
-                        match read_structure_file(&mut parser, StructureType::StrStruct) {
-                            Ok((refid, new_s)) => {
-                                // Add to the new map
-                                filled_structures.insert(refid, new_s);
-                            }
-                            Err(_e) => {}
-                        }
+                    if let Ok((refid, new_s)) = read_structure_file(&mut parser, StructureType::Struct) {
+                        // Add to the new map
+                        filled_structures.insert(refid, new_s);
                     }
-                    // Not an error we need to worry about
-                    Err(_e) => {}
-                }
+		}
             }
         }
     }
@@ -1103,12 +1078,9 @@ fn read_structures_files(opt: &Opt,
 fn read_header_copyright(opt: &Opt) -> Result<String, std::io::Error>
 {
     let mut h_file = String::new();
-    match write!(h_file, "{}/{}", &opt.header_src_dir, &opt.headerfile) {
-        Ok(_f) => {}
-        Err(_e) => {
-            println!("Error making header file name for {}: {}", opt.header_src_dir, opt.headerfile);
-            return Err(Error::new(ErrorKind::Other, "Error making filename"));
-        }
+    if let Err(_e) = write!(h_file, "{}/{}", &opt.header_src_dir, &opt.headerfile) {
+        println!("Error making header file name for {}: {}", opt.header_src_dir, opt.headerfile);
+        return Err(Error::new(ErrorKind::Other, "Error making filename"));
     }
 
     let f = File::open(&h_file)?;
@@ -1124,7 +1096,7 @@ fn read_header_copyright(opt: &Opt) -> Result<String, std::io::Error>
             Err(e) => return Err(e)
         }
     }
-    return Err(Error::new(ErrorKind::Other, "Not found"));
+    Err(Error::new(ErrorKind::Other, "Not found"))
 }
 
 
@@ -1140,10 +1112,10 @@ fn print_text_function(f: &FunctionInfo,
             None =>
                 println!("  PARAM: {} {}", i.par_type, i.par_name),
         }
-        if i.par_brief != "" {
+        if !i.par_brief.is_empty() {
             println!("  PARAM brief: {}", i.par_brief);
         }
-        if i.par_desc != "" {
+        if !i.par_desc.is_empty() {
             println!("  PARAM desc: {}", i.par_desc);
         }
     }
@@ -1152,21 +1124,17 @@ fn print_text_function(f: &FunctionInfo,
 
 
     for fs in &f.fn_refids {
-        match structures.get(fs) {
-            Some(s) => {
-
-                println!("STRUCTURE: {}", s.str_name);
-                if s.str_brief != "" {
-                    println!("           {}", s.str_brief);
-                }
-                if s.str_description != "" {
-                    println!("           {}", s.str_description);
-                }
-                for m in &s.str_members {
-                    println!("   MEMB: {} {}", m.par_type, m.par_name);
-                }
+        if let Some(s) = structures.get(fs) {
+            println!("STRUCTURE: {}", s.str_name);
+            if !s.str_brief.is_empty() {
+                println!("           {}", s.str_brief);
             }
-            None => {}
+            if !s.str_description.is_empty() {
+                println!("           {}", s.str_description);
+            }
+            for m in &s.str_members {
+                println!("   MEMB: {} {}", m.par_type, m.par_name);
+            }
         }
     }
 
@@ -1174,14 +1142,14 @@ fn print_text_function(f: &FunctionInfo,
 }
 
 // Format a long description string
-fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<(), std::io::Error>
+fn print_long_string(f: &mut BufWriter<File>, s: &str) -> Result<(), std::io::Error>
 {
     let mut in_nf = false;
 
     // Check for .nf / .fi and don't format those!
     for l in s.lines() {
         if l.starts_with(".nf") {
-            writeln!(f,"")?;
+            writeln!(f)?;
             in_nf = true;
         }
 
@@ -1192,7 +1160,7 @@ fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<(), std::io:
         }
 
         if l.starts_with(".fi") {
-            writeln!(f,"")?;
+            writeln!(f)?;
             in_nf = false;
         }
     }
@@ -1201,7 +1169,7 @@ fn print_long_string(f: &mut BufWriter<File>, s: &String) -> Result<(), std::io:
 
 // Just for testing really
 fn print_ascii_pages(_opt: &Opt,
-                     functions: &Vec<FunctionInfo>,
+                     functions: &[FunctionInfo],
                      structures: &HashMap<String, StructureInfo>)
 {
     for f in functions {
@@ -1220,7 +1188,7 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
 
     // Reformat pointer params so they look nicer
     // these unwrap()s are safe because we check the length before doing the get()
-    if formatted_type.len() > 0 && formatted_type.get(typelen-1..typelen).unwrap() == "*" {
+    if !formatted_type.is_empty() && formatted_type.get(typelen-1..typelen).unwrap() == "*" {
         asterisks = " *".to_string();
         formatted_type = pi.par_type.get(..typelen-1).unwrap().to_string();
 
@@ -1228,12 +1196,13 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
         if typelen > 1 && formatted_type.get(typelen-2..typelen-1).unwrap() == "*" {
             asterisks = "**".to_string();
             formatted_type = pi.par_type.get(..typelen-2).unwrap().to_string();
-        } else
-        // Tidy function pointers
+        } else {
+            // Tidy function pointers
             if typelen > 1 && formatted_type.get(typelen-2..typelen-1).unwrap() == "(" {
                 asterisks = "(*".to_string();
                 formatted_type = pi.par_type.get(..typelen-2).unwrap().to_string();
             }
+	}
     }
 
     if bold {
@@ -1251,10 +1220,10 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
 // Print a structure or enum
 fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), std::io::Error>
 {
-    if si.str_brief != "" {
+    if !si.str_brief.is_empty() {
         writeln!(f, "{}", si.str_brief)?;
     }
-    if si.str_description != "" {
+    if !si.str_description.is_empty() {
         writeln!(f, "{}", si.str_description)?;
     }
 
@@ -1265,18 +1234,18 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), st
         }
     }
 
-    writeln!(f, "")?;
+    writeln!(f,)?;
     writeln!(f, ".nf")?;
     writeln!(f, "\\fB")?;
     match si.str_type {
-        StructureType::StrEnum =>  writeln!(f, "enum {} {{", si.str_name)?,
-        StructureType::StrStruct => writeln!(f, "struct {} {{", si.str_name)?,
-        StructureType::StrUnknown => writeln!(f, "??? {} {{", si.str_name)?,
+        StructureType::Enum =>  writeln!(f, "enum {} {{", si.str_name)?,
+        StructureType::Struct => writeln!(f, "struct {} {{", si.str_name)?,
+        StructureType::Unknown => writeln!(f, "??? {} {{", si.str_name)?,
     };
 
     let mut i=0;
     for p in &si.str_members {
-        i = i+1;
+        i += 1;
         if i == si.str_members.len() {
             print_param(f, p, max_param_length, false, "".to_string())?;
         } else {
@@ -1293,11 +1262,11 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), st
 
 // Print a single man page
 fn print_man_page(opt: &Opt,
-                  man_date: &String,
+                  man_date: &str,
                   function: &FunctionInfo,
-                  functions: &Vec<FunctionInfo>,
+                  functions: &[FunctionInfo],
                   structures: &HashMap<String, StructureInfo>,
-                  copyright: &String) -> Result<(), std::io::Error>
+                  copyright: &str) -> Result<(), std::io::Error>
 {
     if function.fn_name == opt.headerfile && !opt.print_general {
         return Ok(());
@@ -1305,12 +1274,9 @@ fn print_man_page(opt: &Opt,
 
     // DO IT!
     let mut man_file = String::new();
-    match write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Error making manpage filename: {:?}", e);
-            return Err(Error::new(ErrorKind::Other, "Error making filename"));
-        }
+    if let Err(e) = write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
+        eprintln!("Error making manpage filename: {:?}", e);
+        return Err(Error::new(ErrorKind::Other, "Error making filename"));
     }
 
     let dateptr = man_date;
@@ -1337,7 +1303,7 @@ fn print_man_page(opt: &Opt,
                 if p.par_name.len() > max_param_name_len {
                     max_param_name_len = p.par_name.len();
                 }
-                if p.par_desc != "" && p.par_type != "" {
+                if !p.par_desc.is_empty() && !p.par_type.is_empty() {
                     num_param_descs += 1;
                 }
                 param_count += 1;
@@ -1349,7 +1315,7 @@ fn print_man_page(opt: &Opt,
 
             writeln!(f, ".SH NAME")?;
             writeln!(f, ".PP")?;
-            if function.fn_brief != ""  {
+            if !function.fn_brief.is_empty()  {
                 writeln!(f, "{} \\- {}", function.fn_name, function.fn_brief)?;
             } else {
                 writeln!(f, "{}", function.fn_name)?;
@@ -1359,13 +1325,13 @@ fn print_man_page(opt: &Opt,
             writeln!(f, ".PP")?;
 	    writeln!(f, ".nf")?;
 	    writeln!(f, ".B #include <{}{}>", opt.header_prefix, opt.headerfile)?;
-            if function.fn_def != "" {
+            if !function.fn_def.is_empty() {
                 writeln!(f, ".sp")?;
                 writeln!(f, "\\fB{}\\fP(", function.fn_def)?;
 
                 let mut i=0;
                 for p in &function.fn_args {
-                    i = i+1;
+                    i += 1;
                     if i == param_count {
                         print_param(&mut f, &p, max_param_type_len, true, "".to_string())?;
                     } else {
@@ -1386,30 +1352,27 @@ fn print_man_page(opt: &Opt,
                              p.par_name, p.par_desc)?;
                 }
             }
-            if function.fn_detail != "" {
+            if !function.fn_detail.is_empty() {
 	        writeln!(f, ".SH DESCRIPTION")?;
                 writeln!(f, ".PP")?;
                 print_long_string(&mut f, &function.fn_detail)?;
             }
 
-            if function.fn_refids.len() > 0 {
+            if !function.fn_refids.is_empty() {
                 let mut first = true; // In case we can't find the refids, don't print the header
 
                 for fs in &function.fn_refids {
-                    match structures.get(fs) {
-                        Some(s) => {
-                            if first {
-                                writeln!(f, ".SH STRUCTURES")?;
-                                writeln!(f, ".PP")?;
-                                first = false;
-                            }
-                            print_structure(&mut f, &s)?;
+                    if let Some(s) = structures.get(fs) {
+                        if first {
+                            writeln!(f, ".SH STRUCTURES")?;
+                            writeln!(f, ".PP")?;
+                            first = false;
                         }
-                        None => {}
+                        print_structure(&mut f, &s)?;
                     }
                 }
             }
-            if function.fn_returnval != "" {
+            if !function.fn_returnval.is_empty() {
 	        writeln!(f, ".SH RETURN VALUE")?;
                 writeln!(f, ".PP")?;
                 writeln!(f, "{}", function.fn_returnval)?;
@@ -1422,18 +1385,18 @@ fn print_man_page(opt: &Opt,
             }
 
             // #defines - only exists on the General manpage
-            if function.fn_defines.len() > 0 {
+            if !function.fn_defines.is_empty() {
                 writeln!(f, ".SH DEFINES")?;
                 writeln!(f, ".PP")?;
                 for d in &function.fn_defines {
                     // Only print ALLCAPS defines, for neatness
                     if d.hd_name == d.hd_name.to_ascii_uppercase() {
-                        if d.hd_brief != "" {
+                        if !d.hd_brief.is_empty() {
                             writeln!(f, ".PP")?;
                             writeln!(f, "{}", d.hd_brief)?;
                             writeln!(f, ".br")?;
                         }
-                        if d.hd_desc != "" {
+                        if !d.hd_desc.is_empty() {
                             writeln!(f, ".br")?;
                             writeln!(f, "{}", d.hd_desc)?;
                             writeln!(f, ".br")?;
@@ -1445,7 +1408,7 @@ fn print_man_page(opt: &Opt,
                 }
             }
 
-            if function.fn_note != "" {
+            if !function.fn_note.is_empty() {
 	        writeln!(f, ".SH NOTE")?;
                 writeln!(f, ".PP")?;
                 print_long_string(&mut f, &function.fn_note)?;
@@ -1470,7 +1433,7 @@ fn print_man_page(opt: &Opt,
                 };
             }
 
-            if copyright != "" {
+            if !copyright.is_empty() {
                 writeln!(f, ".SH COPYRIGHT")?;
                 writeln!(f, ".PP")?;
                 writeln!(f,"{}", copyright)?;
@@ -1479,13 +1442,13 @@ fn print_man_page(opt: &Opt,
             //END OF PRINTING
         }
     }
-    return Ok(());
+    Ok(())
 }
 
 
 // Print all man pages
 fn print_man_pages(opt: &Opt,
-                   functions: &Vec<FunctionInfo>,
+                   functions: &[FunctionInfo],
                    structures: &HashMap<String, StructureInfo>) -> Result<(), std::fmt::Error>
 {
     let mut date_to_print = String::new();
@@ -1495,7 +1458,7 @@ fn print_man_pages(opt: &Opt,
     // Get current date
     let today: DateTime<Local> = Local::now();
 
-    if opt.manpage_date != "" {
+    if !opt.manpage_date.is_empty() {
         date_to_print = opt.manpage_date.clone();
     } else {
         write!(date_to_print, "{}-{}-{}", today.year(), today.month(), today.day())?;
@@ -1506,9 +1469,8 @@ fn print_man_pages(opt: &Opt,
     }
 
     if opt.use_header_copyright {
-        match read_header_copyright(&opt) {
-            Ok(s) => header_copyright = s,
-            Err(_e) => {} // Use the one in Opt
+        if let Ok(s) = read_header_copyright(&opt) {
+            header_copyright = s;
         }
     } else {
         write!(header_copyright, "Copyright (C) {}-{} {}, All rights reserved",
@@ -1529,12 +1491,9 @@ fn main() {
 
     for in_file in &opt.xml_files.clone() {
         let mut main_xml_file = String::new();
-        match write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
-            Ok(_f) => {}
-            Err(e) => {
-                eprintln!("Error making main XML file name for {}: {}", in_file, e);
-                return;
-            }
+        if let Err(e) = write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
+            eprintln!("Error making main XML file name for {}: {}", in_file, e);
+            return;
         }
 
         match File::open(&main_xml_file) {
@@ -1548,12 +1507,9 @@ fn main() {
                 let mut structures = HashMap::<String, StructureInfo>::new();
 
                 // Read it all into structures
-                match read_file(&mut parser, &mut opt, &mut functions, &mut structures) {
-                    Ok(_r) => {}
-                    Err(e) => {
-                        eprintln!("Error reading XML for {}: {:?}", main_xml_file, e);
-                        continue;
-                    }
+                if let Err(e) = read_file(&mut parser, &mut opt, &mut functions, &mut structures) {
+                    eprintln!("Error reading XML for {}: {:?}", main_xml_file, e);
+                    continue;
                 }
 
                 // Go through the structures map and read those files in to get the full structure info
@@ -1566,12 +1522,9 @@ fn main() {
                     print_ascii_pages(&opt, &functions, &filled_structures);
                 }
                 if opt.print_man {
-                    match print_man_pages(&opt, &functions, &filled_structures) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("Error in print_man_pages: {:?}", e);
-                            break;
-                        }
+                    if let Err(e) = print_man_pages(&opt, &functions, &filled_structures) {
+                        eprintln!("Error in print_man_pages: {:?}", e);
+                        break;
                     }
                 }
             }
