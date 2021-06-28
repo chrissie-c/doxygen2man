@@ -26,6 +26,10 @@ use chrono::prelude::*;
 
 const MAX_PRINT_PARAM_LEN: usize = 80;
 
+// Similar for structure member comments
+const MAX_STRUCT_COMMENT_LEN: usize = 50;
+
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "doxygen2man", about = "Convert doxygen files to man pages")]
 /// This is a tool to generate API manpages from a doxygen-annotated header file.
@@ -193,6 +197,23 @@ impl FunctionInfo {
             fn_refids: Vec::<String>::new(),
         }
     }
+}
+
+// Return the length of a string ignoring any formatting
+fn len_without_formatting(param: &str) -> usize
+{
+    let mut length = 0;
+    let mut last_was_escape = false;
+    for i in param.chars() {
+	if i == '\\' {
+	    last_was_escape = true;
+	} else if last_was_escape {
+	    last_was_escape = false;
+	} else {
+	    length += 1;
+	}
+    }
+    length
 }
 
 // Does what it says on the tin
@@ -864,10 +885,10 @@ fn read_structure_member(parser: &mut EventReader<BufReader<File>>) -> Result<Fn
                                 par_args = collect_text(parser, name)?;
                             }
                             "detaileddescription" => {
-                                par_desc = collect_text(parser, name)?;
+                                par_desc = collect_text(parser, name)?.trim().to_string();
                             }
                             "briefdescription" => {
-                                par_brief = collect_text(parser, name)?;
+                                par_brief = collect_text(parser, name)?.trim().to_string();
                             }
                             _ => {
                                 // Not used but still needs to be collected
@@ -1180,7 +1201,8 @@ fn print_ascii_pages(_opt: &Opt,
 
 // Prints a structure member or a function param given
 // a field width. Also reformats pointers to look nicer (IMHO)
-fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: bool, delimeter: String) -> Result<(), std::io::Error>
+fn print_param(f: &mut BufWriter<File>, pi: &FnParam, type_field_width: usize,
+	       name_field_width: usize, bold: bool, delimeter: String) -> Result<(), std::io::Error>
 {
     let mut asterisks = "  ".to_string();
     let mut formatted_type = pi.par_type.clone();
@@ -1205,15 +1227,27 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, field_width: usize, bold: 
 	}
     }
 
-    if bold {
-        writeln!(f, "    \\fB{:<width$}{}\\fP\\fI{}\\fP{}",
-                 formatted_type, asterisks,
-                 pi.par_name, delimeter, width=field_width)?;
-    } else {
-        writeln!(f, "    {:<width$}{}\\fI{}\\fP{}",
-                 formatted_type, asterisks,
-                 pi.par_name, delimeter, width=field_width)?;
+    // Put long comments on their own line for clarity
+    let comment_len = len_without_formatting(&pi.par_desc);
+    if comment_len > MAX_STRUCT_COMMENT_LEN {
+	writeln!(f, "\\fR /* {} */", pi.par_desc)?;
     }
+
+    if bold {
+        write!(f, "    \\fB")?;
+    } else {
+        write!(f, "    \\fR")?;
+    }
+    write!(f, "{:<width$}{}\\fI{}\\fP{}",
+           formatted_type, asterisks,
+           pi.par_name, delimeter, width=type_field_width)?;
+
+    // Field description */
+    if comment_len > 0 && comment_len <= MAX_STRUCT_COMMENT_LEN && name_field_width > 0 {
+	let pad_width = (name_field_width - len_without_formatting(&pi.par_name)) + 1 - delimeter.len();
+	write!(f, "\\fP {:>width$} /* {} */", " ", pi.par_desc, width=pad_width)?;
+    }
+    writeln!(f)?;
     Ok(())
 }
 
@@ -1227,10 +1261,14 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), st
         writeln!(f, "{}", si.str_description)?;
     }
 
-    let mut max_param_length = 0;
+    let mut max_param_type_length = 0;
+    let mut max_param_name_length = 0;
     for p in &si.str_members {
-        if p.par_type.len() > max_param_length {
-            max_param_length = p.par_type.len();
+        if p.par_type.len() > max_param_type_length {
+            max_param_type_length = p.par_type.len();
+	}
+        if p.par_name.len() > max_param_name_length {
+            max_param_name_length = p.par_name.len();
         }
     }
 
@@ -1247,9 +1285,9 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), st
     for p in &si.str_members {
         i += 1;
         if i == si.str_members.len() {
-            print_param(f, p, max_param_length, false, "".to_string())?;
+            print_param(f, p, max_param_type_length, max_param_name_length, false, "".to_string())?;
         } else {
-            print_param(f, p, max_param_length, false, ";".to_string())?;
+            print_param(f, p, max_param_type_length, max_param_name_length, false, ";".to_string())?;
         }
     }
 
@@ -1333,9 +1371,9 @@ fn print_man_page(opt: &Opt,
                 for p in &function.fn_args {
                     i += 1;
                     if i == param_count {
-                        print_param(&mut f, &p, max_param_type_len, true, "".to_string())?;
+                        print_param(&mut f, &p, max_param_type_len, 0, true, "".to_string())?;
                     } else {
-                        print_param(&mut f, &p, max_param_type_len, true, ",".to_string())?;
+                        print_param(&mut f, &p, max_param_type_len, 0, true, ",".to_string())?;
                     }
                 }
 
