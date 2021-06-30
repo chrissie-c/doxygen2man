@@ -112,6 +112,7 @@ struct FnParam
     par_name: String,
     par_type: String,
     par_refid: Option<String>,
+    par_args: String,
     par_desc: String,
     par_brief: String,
 }
@@ -254,7 +255,7 @@ fn parse_standard_elements(parser: &mut EventReader<BufReader<File>>, name: &Own
             }
             text += collect_text(parser, name)?.as_str();
             if h_type != "normal" {
-                text += "\\fB";
+                text += "\\fR";
             }
         }
         "computeroutput" => {
@@ -647,7 +648,7 @@ fn collect_function_param(parser: &mut EventReader<BufReader<File>>,
                     }
 
                     XmlEvent::EndElement {..} => {
-                        return Ok(FnParam{par_name, par_type, par_refid, par_desc: String::new(), par_brief: String::new()});
+                        return Ok(FnParam{par_name, par_type, par_refid, par_args: String::new(), par_desc: String::new(), par_brief: String::new()});
                     }
                     _e => {
                     }
@@ -897,9 +898,7 @@ fn read_structure_member(parser: &mut EventReader<BufReader<File>>) -> Result<Fn
                         }
                     }
                     XmlEvent::EndElement {..} => {
-                        // += not working here
-                        par_name = par_name + "\\fB" + par_args.as_str() + "\\fR"; // Adds array lengths
-                        return Ok(FnParam {par_name, par_type, par_desc, par_brief, par_refid: None});
+                        return Ok(FnParam {par_name, par_type, par_desc, par_args, par_brief, par_refid: None});
                     },
                     XmlEvent::Characters(_s) => {
                     },
@@ -1129,9 +1128,9 @@ fn print_text_function(f: &FunctionInfo,
     for i in &f.fn_args {
         match &i.par_refid {
             Some(r) =>
-                println!("  PARAM: {} {} (refid={})", i.par_type, i.par_name, r),
+                println!("  PARAM: {} {}{} (refid={})", i.par_type, i.par_name, i.par_args, r),
             None =>
-                println!("  PARAM: {} {}", i.par_type, i.par_name),
+                println!("  PARAM: {} {}{}", i.par_type, i.par_name, i.par_args),
         }
         if !i.par_brief.is_empty() {
             println!("  PARAM brief: {}", i.par_brief);
@@ -1154,7 +1153,7 @@ fn print_text_function(f: &FunctionInfo,
                 println!("           {}", s.str_description);
             }
             for m in &s.str_members {
-                println!("   MEMB: {} {}", m.par_type, m.par_name);
+                println!("   MEMB: {} {}{}", m.par_type, m.par_name, m.par_args);
             }
         }
     }
@@ -1256,14 +1255,14 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, type_field_width: usize,
     } else {
         write!(f, "    \\fR")?;
     }
-    write!(f, "{:<width$}{}\\fI{}\\fP{}",
+    write!(f, "{:<width$}{}\\fI{}\\fB{}\\fR{}",
            formatted_type, asterisks,
-           pi.par_name, delimeter, width=type_field_width)?;
+           pi.par_name, pi.par_args, delimeter, width=type_field_width)?;
 
     // Field description */
     if comment_len > 0 && comment_len <= MAX_STRUCT_COMMENT_LEN && name_field_width > 0 {
-	let pad_width = (name_field_width - len_without_formatting(&pi.par_name)) + 1 - delimeter.len();
-	write!(f, "\\fP {:>width$} /* {} */", " ", pi.par_desc, width=pad_width)?;
+	let pad_width = 1 + (name_field_width - pi.par_name.len() - pi.par_args.len()) - delimeter.len();
+	write!(f, "\\fP {:>width$} /* {} */", "", pi.par_desc, width=pad_width)?;
     }
     writeln!(f)?;
     Ok(())
@@ -1285,8 +1284,8 @@ fn print_structure(f: &mut BufWriter<File>, si: &StructureInfo) -> Result<(), st
         if p.par_type.len() > max_param_type_length {
             max_param_type_length = p.par_type.len();
 	}
-        if p.par_name.len() > max_param_name_length {
-            max_param_name_length = p.par_name.len();
+        if p.par_name.len() + p.par_args.len() > max_param_name_length {
+            max_param_name_length = p.par_name.len() + p.par_args.len();
         }
     }
 
