@@ -1199,6 +1199,24 @@ fn print_ascii_pages(_opt: &Opt,
 }
 
 
+fn print_long_structure_comment(f: &mut BufWriter<File>, comment: &str) -> Result<(), std::io::Error>
+{
+    writeln!(f, "    \\fP/*")?;
+    write!(f, "     *")?;
+
+    let mut column = 7;
+    for word in comment.split_whitespace() {
+	column += word.len();
+	if column > 80 {
+	    write!(f, "\n     *")?;
+	    column = 7;
+	}
+	write!(f, " {}", word)?;
+    }
+    writeln!(f, "\n     */")?;
+    Ok(())
+}
+
 // Prints a structure member or a function param given
 // a field width. Also reformats pointers to look nicer (IMHO)
 fn print_param(f: &mut BufWriter<File>, pi: &FnParam, type_field_width: usize,
@@ -1230,7 +1248,7 @@ fn print_param(f: &mut BufWriter<File>, pi: &FnParam, type_field_width: usize,
     // Put long comments on their own line for clarity
     let comment_len = len_without_formatting(&pi.par_desc);
     if comment_len > MAX_STRUCT_COMMENT_LEN {
-	writeln!(f, "\\fR /* {} */", pi.par_desc)?;
+	print_long_structure_comment(f, &pi.par_desc)?;
     }
 
     if bold {
