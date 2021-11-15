@@ -59,7 +59,7 @@ struct Opt {
     print_general: bool,
 
     #[structopt (short="q", long="quiet", help="Run quietly, no progress info printed")]
-    quiet: bool,
+    _quiet: bool,
 
     #[structopt (short="c", long="use-header-copyright", help="Use the Copyright date from the header file (if one can be found)")]
     use_header_copyright: bool,
@@ -249,7 +249,7 @@ fn parse_standard_elements(parser: &mut EventReader<BufReader<File>>, name: &Own
             text += "\\fR";
         }
         "highlight" => { // TBH I've only ever seen "normal" here
-            let h_type = get_attr(&e, "class");
+            let h_type = get_attr(e, "class");
             if h_type != "normal" {
                 text += "\\fB";
             }
@@ -534,7 +534,7 @@ fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>,
                     XmlEvent::StartElement {name, ..} => {
                         match name.to_string().as_str() {
                             "para" => {
-                                collect_detail_bits(parser, &name, function)?;
+                                collect_detail_bits(parser, name, function)?;
                                 function.fn_detail += "\n";
                             }
                             "parameterlist" => {
@@ -699,7 +699,7 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                                 function.fn_brief = collect_text(parser, name)?;
                             }
                             "detaileddescription" => {
-                                collect_detail_bits(parser, &name, &mut function)?;
+                                collect_detail_bits(parser, name, &mut function)?;
                             }
                             _ => {
                                 // Not used,. but still need to consume it
@@ -833,7 +833,7 @@ fn read_file(parser: &mut EventReader<BufReader<File>>,
                                 general.fn_brief += collect_text(parser, name)?.as_str();
                             }
                             "detaileddescription" => {
-                                collect_detail_bits(parser, &name, &mut general)?;
+                                collect_detail_bits(parser, name, &mut general)?;
                             }
                             _ => {
                                 let _tother = parse_standard_elements(parser, name, &e)?;
@@ -1193,7 +1193,7 @@ fn print_ascii_pages(_opt: &Opt,
                      structures: &HashMap<String, StructureInfo>)
 {
     for f in functions {
-        print_text_function(&f, &structures);
+        print_text_function(f, structures);
     }
 }
 
@@ -1388,9 +1388,9 @@ fn print_man_page(opt: &Opt,
                 for p in &function.fn_args {
                     i += 1;
                     if i == param_count {
-                        print_param(&mut f, &p, max_param_type_len, 0, true, "".to_string())?;
+                        print_param(&mut f, p, max_param_type_len, 0, true, "".to_string())?;
                     } else {
-                        print_param(&mut f, &p, max_param_type_len, 0, true, ",".to_string())?;
+                        print_param(&mut f, p, max_param_type_len, 0, true, ",".to_string())?;
                     }
                 }
 
@@ -1423,7 +1423,7 @@ fn print_man_page(opt: &Opt,
                             writeln!(f, ".PP")?;
                             first = false;
                         }
-                        print_structure(&mut f, &s)?;
+                        print_structure(&mut f, s)?;
                     }
                 }
             }
@@ -1524,7 +1524,7 @@ fn print_man_pages(opt: &Opt,
     }
 
     if opt.use_header_copyright {
-        if let Ok(s) = read_header_copyright(&opt) {
+        if let Ok(s) = read_header_copyright(opt) {
             header_copyright = s;
         }
     } else {
@@ -1533,7 +1533,7 @@ fn print_man_pages(opt: &Opt,
     }
 
     for f in functions {
-        print_man_page(&opt, &date_to_print, &f, &functions, &structures, &header_copyright).unwrap();
+        print_man_page(opt, &date_to_print, f, functions, structures, &header_copyright).unwrap();
     }
     Ok(())
 }
