@@ -1075,7 +1075,7 @@ fn read_structures_files(opt: &Opt,
             StructureType::Struct => {
                 let mut xml_file = String::new();
                 if let Err(e) = write!(xml_file, "{}/{}.xml", &opt.xml_dir, &refid) {
-                    println!("Error making structure XML file name for {}: {}", refid, e);
+                    println!("Error making structure XML file name for {refid}: {e}");
                     return;
                 }
 
@@ -1173,7 +1173,7 @@ fn print_long_string(f: &mut BufWriter<File>, s: &str) -> Result<(), std::io::Er
             in_nf = true;
         }
 
-        writeln!(f,"{}", l)?;
+        writeln!(f,"{l}")?;
 
         if !in_nf {
             writeln!(f,".PP")?;
@@ -1210,7 +1210,7 @@ fn print_long_structure_comment(f: &mut BufWriter<File>, comment: &str) -> Resul
 	    write!(f, "\n     *")?;
 	    column = 7;
 	}
-	write!(f, " {}", word)?;
+	write!(f, " {word}")?;
     }
     writeln!(f, "\n     */")?;
     Ok(())
@@ -1330,7 +1330,7 @@ fn print_man_page(opt: &Opt,
     // DO IT!
     let mut man_file = String::new();
     if let Err(e) = write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
-        eprintln!("Error making manpage filename: {:?}", e);
+        eprintln!("Error making manpage filename: {e:?}");
         return Err(Error::new(ErrorKind::Other, "Error making filename"));
     }
 
@@ -1491,7 +1491,7 @@ fn print_man_page(opt: &Opt,
             if !copyright.is_empty() {
                 writeln!(f, ".SH COPYRIGHT")?;
                 writeln!(f, ".PP")?;
-                writeln!(f,"{}", copyright)?;
+                writeln!(f,"{copyright}")?;
             }
 
             //END OF PRINTING
@@ -1547,7 +1547,7 @@ fn main() {
     for in_file in &opt.xml_files.clone() {
         let mut main_xml_file = String::new();
         if let Err(e) = write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
-            eprintln!("Error making main XML file name for {}: {}", in_file, e);
+            eprintln!("Error making main XML file name for {in_file}: {e}");
             return;
         }
 
@@ -1563,7 +1563,7 @@ fn main() {
 
                 // Read it all into structures
                 if let Err(e) = read_file(&mut parser, &mut opt, &mut functions, &mut structures) {
-                    eprintln!("Error reading XML for {}: {:?}", main_xml_file, e);
+                    eprintln!("Error reading XML for {main_xml_file}: {e:?}");
                     continue;
                 }
 
@@ -1578,7 +1578,7 @@ fn main() {
                 }
                 if opt.print_man {
                     if let Err(e) = print_man_pages(&opt, &functions, &filled_structures) {
-                        eprintln!("Error in print_man_pages: {:?}", e);
+                        eprintln!("Error in print_man_pages: {e:?}");
                         break;
                     }
                 }
