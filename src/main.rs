@@ -42,7 +42,7 @@ const MAX_STRUCT_COMMENT_LEN: usize = 50;
 /// <include-file>_8h.xml, eg qbipcs_8h.xml, you can pass multiple XML files to
 /// doxygen2man on the command-line.
 ///
-/// If you want HTML output then simpy use nroff on the generated files as you
+/// If you want HTML output then simply use nroff on the generated files as you
 /// would do with any other man page.
 ///
 struct Opt {
