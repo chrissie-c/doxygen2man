@@ -485,7 +485,7 @@ fn collect_params(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedNa
                             "parameteritem" => {
                                 let (name, desc) = collect_parameter_item(parser, name)?;
                                 // Add the desc to this param
-                                for mut p in &mut *params {
+                                for p in &mut *params {
                                     if p.par_name == name {
                                         p.par_desc = desc.clone();
                                     }
