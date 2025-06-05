@@ -12,7 +12,7 @@ extern crate chrono;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write, ErrorKind, Error, BufRead};
+use std::io::{BufReader, BufWriter, Write, Error, BufRead};
 use std::fmt::Write as fmtwrite;
 use structopt::StructOpt;
 use xml::reader::{EventReader, XmlEvent, ParserConfig};
@@ -1100,7 +1100,7 @@ fn read_header_copyright(opt: &Opt) -> Result<String, std::io::Error>
     let mut h_file = String::new();
     if let Err(_e) = write!(h_file, "{}/{}", &opt.header_src_dir, &opt.headerfile) {
         println!("Error making header file name for {}: {}", opt.header_src_dir, opt.headerfile);
-        return Err(Error::new(ErrorKind::Other, "Error making filename"));
+        return Err(Error::other("Error making filename"));
     }
 
     let f = File::open(&h_file)?;
@@ -1116,7 +1116,7 @@ fn read_header_copyright(opt: &Opt) -> Result<String, std::io::Error>
             Err(e) => return Err(e)
         }
     }
-    Err(Error::new(ErrorKind::Other, "Not found"))
+    Err(Error::other("Not found"))
 }
 
 
@@ -1331,7 +1331,7 @@ fn print_man_page(opt: &Opt,
     let mut man_file = String::new();
     if let Err(e) = write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
         eprintln!("Error making manpage filename: {e:?}");
-        return Err(Error::new(ErrorKind::Other, "Error making filename"));
+        return Err(Error::other("Error making filename"));
     }
 
     let dateptr = man_date;
