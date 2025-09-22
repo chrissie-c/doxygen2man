@@ -631,11 +631,9 @@ fn collect_function_param(parser: &mut EventReader<BufReader<File>>,
                 match &e {
                     XmlEvent::StartElement {name, ..} => {
                         let (tmp, refid) = collect_text_and_refid(parser)?;
-                        if let Some(r) = &refid {
-                            if structures.get(r).is_none() {
-                                let new_struct = StructureInfo {str_type: StructureType::Struct, str_name: tmp.clone(), str_brief: String::new(), str_description: String::new(), str_members: Vec::<FnParam>::new()};
+                        if let Some(r) = &refid && structures.get(r).is_none() {
+                            let new_struct = StructureInfo {str_type: StructureType::Struct, str_name: tmp.clone(), str_brief: String::new(), str_description: String::new(), str_members: Vec::<FnParam>::new()};
                                 structures.insert(r.clone(), new_struct);
-                            }
                         }
 
                         if name.to_string() == "type" {
@@ -1576,11 +1574,9 @@ fn main() {
                 if opt.print_ascii {
                     print_ascii_pages(&opt, &functions, &filled_structures);
                 }
-                if opt.print_man {
-                    if let Err(e) = print_man_pages(&opt, &functions, &filled_structures) {
-                        eprintln!("Error in print_man_pages: {e:?}");
-                        break;
-                    }
+                if opt.print_man && let Err(e) = print_man_pages(&opt, &functions, &filled_structures) {
+                    eprintln!("Error in print_man_pages: {e:?}");
+                    break;
                 }
             }
             Err(e) => {
