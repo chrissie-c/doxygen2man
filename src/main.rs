@@ -1,6 +1,6 @@
 // doxygen2man
 //
-// Copyright (C) 2020-2021 Red Hat, Inc.  All rights reserved.
+// Copyright (C) 2020-2026 Red Hat, Inc.  All rights reserved.
 //
 // Author: Christine Caulfield <ccaulfie@redhat.com>
 //
@@ -377,10 +377,9 @@ fn collect_retval(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedNa
                     XmlEvent::Characters(s) => {
                         let _text = s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name == elem_name {
+                    XmlEvent::EndElement {name, ..}
+                        if name == elem_name => {
                             return Ok(ReturnVal{ret_name, ret_desc})
-                        };
                     }
                     _ => {}
                 }
@@ -415,11 +414,10 @@ fn collect_retvals(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedN
                     XmlEvent::Characters(s) => {
                         let _text = s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name == elem_name {
+                    XmlEvent::EndElement {name, ..}
+                        if name == elem_name => {
                             return Ok(rvs)
-                        };
-                    }
+			}
                     _ => {}
                 }
             }
@@ -457,11 +455,10 @@ fn collect_parameter_item(parser: &mut EventReader<BufReader<File>>, elem_name: 
                     XmlEvent::Characters(s) => {
                         let _text = s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name == elem_name {
+                    XmlEvent::EndElement {name, ..}
+                        if name == elem_name => {
                             return Ok((par_name, par_desc));
-                        };
-                    }
+                        }
                     _ => {}
                 }
             }
@@ -499,11 +496,10 @@ fn collect_params(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedNa
                     XmlEvent::Characters(s) => {
                         let _text = s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name == elem_name {
+                    XmlEvent::EndElement {name, ..}
+                        if name == elem_name => {
                             return Ok(())
-                        };
-                    }
+                        }
                     _ => {}
                 }
             }
@@ -563,15 +559,14 @@ fn collect_detail_bits(parser: &mut EventReader<BufReader<File>>,
                     XmlEvent::Characters(s) => {
                         text += s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
+                    XmlEvent::EndElement {name, ..}
                         // Only return if we are at the end of the element that called us
-                        if name == elem_name {
+                        if name == elem_name => {
                             function.fn_detail += text.trim_end().to_string().as_str();
                             function.fn_returnval += returns.as_str();
                             function.fn_note += notes.as_str();
                             function.fn_retvals.append(&mut retvals);
                             return Ok(());
-                        }
                     }
                     _ => {}
                 }
@@ -601,14 +596,13 @@ fn collect_text(parser: &mut EventReader<BufReader<File>>, elem_name: &OwnedName
                     XmlEvent::Characters(s) => {
                         text += s;
                     }
-                    XmlEvent::EndElement {name, ..} => {
+                    XmlEvent::EndElement {name, ..}
                         // Only return if we are at the end of the element that called us
-                        if name == elem_name {
+                        if name == elem_name => {
                             return Ok(text.trim_end().to_string());
                         }
-                    }
                     _ => {}
-                }
+		}
             }
             Err(e) => {
                 return Err(e);
@@ -708,8 +702,8 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                     XmlEvent::Characters(_s) => {
 
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name.to_string().as_str() == "memberdef" {
+                    XmlEvent::EndElement {name, ..}
+                        if name.to_string().as_str() == "memberdef" => {
                             // Remove all duplicate refids for functions
                             // where a structure appears as multiple arguments
                             // (not common, but no need to print it twice)
@@ -719,7 +713,6 @@ fn collect_function_info(parser: &mut EventReader<BufReader<File>>,
                             functions.push(function);
                             return Ok(());
                         }
-                    }
                     _ => {}
                 }
             }
@@ -759,10 +752,9 @@ fn collect_define(parser: &mut EventReader<BufReader<File>>) -> Result<HashDefin
                             _ => {}
                         }
                     },
-                    XmlEvent::EndElement {name, ..} => {
-                        if name.to_string().as_str() == "memberdef" {
+                    XmlEvent::EndElement {name, ..}
+                        if name.to_string().as_str() == "memberdef" => {
                             return Ok(HashDefine{hd_name, hd_init, hd_brief, hd_desc});
-                        }
                     },
                     XmlEvent::Characters(_s) => {
                     },
@@ -995,10 +987,9 @@ fn read_structure(parser: &mut EventReader<BufReader<File>>,
                             _ => {}
                         }
                     }
-                    XmlEvent::EndElement {name, ..} => {
-                        if name.to_string() == "compounddef" {
+                    XmlEvent::EndElement {name, ..}
+                        if name.to_string() == "compounddef" => {
                             return Ok(sinfo);
-                        }
                     },
                     XmlEvent::Characters(_s) => {
                     },
