@@ -829,10 +829,8 @@ fn collect_enum(parser: &mut EventReader<BufReader<File>>,
                         sinfo.str_name = collect_text(parser, name)?;
                     }
                     "enumvalue" => {
-                        match read_structure_member(parser) {
-                            Ok(s) => sinfo.str_members.push(s),
-                            Err(e) => return Err(e),
-                        }
+                        let s = read_structure_member(parser)?;
+                        sinfo.str_members.push(s);
                     }
                     "briefdescription" => {
                         sinfo.str_brief = collect_text(parser, name)?;
@@ -882,10 +880,8 @@ fn read_structure(parser: &mut EventReader<BufReader<File>>,
                         sinfo.str_description = collect_text(parser, name)?;
                     }
                     "memberdef" => {
-                        match read_structure_member(parser) {
-                            Ok(s) => sinfo.str_members.push(s),
-                            Err(e) => return Err(e),
-                        }
+                        let s = read_structure_member(parser)?;
+                        sinfo.str_members.push(s);
                     }
                     _ => {}
                 }
@@ -954,7 +950,7 @@ fn read_structures_files(opt: &Opt,
             StructureType::Unknown => {} // Throw it away
             StructureType::Struct => {
                 let mut xml_file = String::new();
-                if let Err(e) = write!(xml_file, "{}/{}.xml", &opt.xml_dir, &refid) {
+                if let Err(e) = write!(xml_file, "{}/{}.xml", opt.xml_dir, refid) {
                     println!("Error making structure XML file name for {refid}: {e}");
                     return;
                 }
@@ -978,7 +974,7 @@ fn read_structures_files(opt: &Opt,
 fn read_header_copyright(opt: &Opt) -> Result<String, std::io::Error>
 {
     let mut h_file = String::new();
-    if let Err(_e) = write!(h_file, "{}/{}", &opt.header_src_dir, &opt.headerfile) {
+    if let Err(_e) = write!(h_file, "{}/{}", opt.header_src_dir, opt.headerfile) {
         println!("Error making header file name for {}: {}", opt.header_src_dir, opt.headerfile);
         return Err(Error::other("Error making filename"));
     }
@@ -1205,7 +1201,7 @@ fn print_man_page(opt: &Opt,
 
     // DO IT!
     let mut man_file = String::new();
-    if let Err(e) = write!(man_file, "{}/{}.{}", &opt.output_dir, function.fn_name, opt.man_section) {
+    if let Err(e) = write!(man_file, "{}/{}.{}", opt.output_dir, function.fn_name, opt.man_section) {
         eprintln!("Error making manpage filename: {e:?}");
         return Err(Error::other("Error making filename"));
     }
@@ -1214,7 +1210,7 @@ fn print_man_page(opt: &Opt,
 
     match File::create(&man_file) {
         Err(e) => {
-            println!("Cannot create man file {}: {}", &man_file, e);
+            println!("Cannot create man file {}: {}", man_file, e);
             return Err(e);
         }
         Ok(fl) => {
@@ -1422,7 +1418,7 @@ fn main() {
 
     for in_file in &opt.xml_files.clone() {
         let mut main_xml_file = String::new();
-        if let Err(e) = write!(main_xml_file, "{}/{}", &opt.xml_dir, &in_file) {
+        if let Err(e) = write!(main_xml_file, "{}/{}", opt.xml_dir, in_file) {
             eprintln!("Error making main XML file name for {in_file}: {e}");
             return;
         }
@@ -1458,7 +1454,7 @@ fn main() {
                 }
             }
             Err(e) => {
-                println!("Cannot open XML file {}: {}", &main_xml_file, e);
+                println!("Cannot open XML file {}: {}", main_xml_file, e);
             }
         }
     }
